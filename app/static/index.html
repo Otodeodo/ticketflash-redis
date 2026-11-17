@@ -3,98 +3,216 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TicketFlash</title>
+<title>TicketFlash · Entradas al instante</title>
+<meta name="description" content="Venta de entradas con reservas temporales sobre Redis Cloud.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/static/app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>">
 </head>
 <body>
-<header class="topbar">
-  <div class="brand">
-    <span class="logo">🎟️</span>
-    <div>
-      <h1>TicketFlash</h1>
-      <small>Entradas con reservas temporales · Redis Cloud</small>
-    </div>
-  </div>
-  <div class="conn" id="conn">Conectando…</div>
-  <div class="session" id="session-box">
-    <select id="user-select"><option value="">Selecciona usuario…</option></select>
-    <button id="login-btn" class="btn primary">Iniciar sesión</button>
-    <button id="new-user-btn" class="btn ghost" title="Crear usuario">＋ Usuario</button>
-    <div id="session-info" class="hidden">
-      <span id="session-user"></span>
-      <span class="pill" title="TTL deslizante de la sesión en Redis">sesión expira en <b id="session-ttl">—</b></span>
-      <button id="logout-btn" class="btn ghost">Salir</button>
+
+<!-- ============================== NAV ============================== -->
+<header class="nav">
+  <div class="nav-inner">
+    <a class="wordmark" href="/" aria-label="TicketFlash inicio">TICKET<span>FLASH</span></a>
+
+    <label class="search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3a7.5 7.5 0 0 1 5.9 12.1l4.8 4.8-1.4 1.4-4.8-4.8A7.5 7.5 0 1 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z"/></svg>
+      <input id="search" type="search" placeholder="Busca artistas, recintos, eventos…" autocomplete="off">
+    </label>
+
+    <div class="nav-right">
+      <span class="live" id="conn" title="Estado de la conexión con Redis Cloud"><i></i><b>Conectando</b></span>
+      <button class="icon-btn" id="admin-btn" title="Crear evento" aria-label="Crear evento">
+        <svg viewBox="0 0 24 24"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg>
+      </button>
+      <button class="icon-btn bag" id="bag-btn" title="Mis entradas" aria-label="Mis entradas">
+        <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4V7Zm2 0v1.8a4 4 0 0 1 0 6.4V17h14v-1.8a4 4 0 0 1 0-6.4V7H5Zm4 2h2v2H9V9Zm0 4h2v2H9v-2Z"/></svg>
+        <span class="badge hidden" id="bag-count">0</span>
+      </button>
+      <button class="btn btn-ink" id="login-open">Entrar</button>
+      <button class="avatar hidden" id="avatar-btn" title="Tu sesión"></button>
     </div>
   </div>
 </header>
 
-<main class="layout">
-  <section class="col events">
-    <div class="section-head">
-      <h2>Eventos</h2>
-      <div class="filters">
-        <select id="category-filter"><option value="">Todas las categorías</option></select>
-        <button id="toggle-admin" class="btn ghost">＋ Nuevo evento</button>
+<!-- ============================== HERO ============================== -->
+<section class="hero">
+  <div class="hero-inner">
+    <div class="hero-copy">
+      <p class="eyebrow">Ventas flash · Stock en tiempo real</p>
+      <h1>Tu sitio<br>antes que<br><mark>nadie.</mark></h1>
+      <p class="lead">Reserva tus entradas y las guardamos <b>10 minutos</b> mientras pagas. Si no confirmas, vuelven solas a la venta. Sin colas y sin sobreventa.</p>
+      <div class="hero-cta">
+        <a class="btn btn-volt btn-lg" href="#eventos">Ver eventos</a>
+        <button class="btn btn-ghost btn-lg" id="hero-login">Iniciar sesión</button>
       </div>
     </div>
+    <div class="hero-stats">
+      <div class="stat"><span id="st-events">—</span><small>eventos a la venta</small></div>
+      <div class="stat"><span id="st-sold">—</span><small>entradas vendidas</small></div>
+      <div class="stat"><span id="st-stock">—</span><small>disponibles ahora</small></div>
+      <div class="stat"><span id="st-keys">—</span><small>claves en Redis</small></div>
+    </div>
+  </div>
+</section>
 
-    <form id="user-form" class="card form hidden">
-      <h3>Nuevo usuario</h3>
-      <div class="grid2">
-        <label>Nombre <input id="us-name" required maxlength="80"></label>
-        <label>Email <input id="us-email" type="email" required></label>
-      </div>
-      <div class="row">
-        <button type="submit" class="btn primary">Crear</button>
-        <button type="button" id="us-cancel" class="btn ghost">Cancelar</button>
-      </div>
-    </form>
+<!-- ============================ TICKER ============================ -->
+<div class="ticker" aria-label="Actividad en directo">
+  <span class="ticker-label">● EN DIRECTO</span>
+  <div class="ticker-track"><div class="ticker-move" id="ticker">Cargando actividad…</div></div>
+</div>
 
-    <form id="event-form" class="card form hidden">
-      <h3 id="event-form-title">Nuevo evento</h3>
-      <input type="hidden" id="ev-id">
-      <div class="grid2">
-        <label>Nombre <input id="ev-name" required maxlength="120"></label>
-        <label>Recinto <input id="ev-venue" required maxlength="120"></label>
-        <label>Fecha <input id="ev-date" type="datetime-local" required></label>
-        <label>Categoría <input id="ev-category" required placeholder="musica, deporte…"></label>
-        <label>Precio <input id="ev-price" type="number" min="0.01" step="0.01" required></label>
-        <label id="ev-capacity-label">Capacidad <input id="ev-capacity" type="number" min="1" required></label>
-      </div>
-      <div class="row">
-        <button type="submit" class="btn primary">Guardar</button>
-        <button type="button" id="ev-cancel" class="btn ghost">Cancelar</button>
-      </div>
-    </form>
-
-    <div id="events-list" class="cards"></div>
+<main id="eventos">
+  <!-- ========================== TOP VENTAS ========================== -->
+  <section class="block">
+    <div class="block-head">
+      <h2>Top ventas</h2>
+      <span class="hint">Ranking en tiempo real · Sorted Set</span>
+    </div>
+    <div class="top-row" id="top-row"></div>
   </section>
 
-  <aside class="col side">
-    <div class="card">
-      <h2>Mis reservas <span class="muted">(expiran en 10 min)</span></h2>
-      <div id="holds-list" class="list"><p class="muted">Inicia sesión para ver tus reservas.</p></div>
+  <!-- =========================== CATÁLOGO =========================== -->
+  <section class="block">
+    <div class="block-head">
+      <h2>¿Qué te apetece?</h2>
+      <span class="hint" id="result-count"></span>
     </div>
-    <div class="card">
-      <h2>Mis órdenes</h2>
-      <div id="orders-list" class="list"><p class="muted">—</p></div>
-    </div>
-    <div class="card">
-      <h2>🏆 Ranking de ventas</h2>
-      <ol id="ranking-list" class="ranking"></ol>
-    </div>
-    <div class="card">
-      <h2>Actividad reciente</h2>
-      <ul id="activity-list" class="activity"></ul>
-    </div>
-    <div class="card stats">
-      <h2>Claves en Redis por tipo</h2>
-      <div id="keys-stats" class="chips"></div>
-    </div>
-  </aside>
+    <div class="chips" id="chips"></div>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <!-- ========================== CÓMO FUNCIONA ========================== -->
+  <section class="block how">
+    <div class="how-card"><span class="n">01</span><h3>Reserva</h3><p>Un script Lua comprueba y descuenta el stock en una sola operación atómica. Nunca se vende más de lo que hay.</p></div>
+    <div class="how-card"><span class="n">02</span><h3>10 minutos</h3><p>La reserva es una clave con <code>EXPIRE 600</code>. Si no confirmas, Redis la elimina y el stock vuelve a la venta.</p></div>
+    <div class="how-card"><span class="n">03</span><h3>Confirma</h3><p>Tu orden se guarda sin caducidad, entra en el ranking (ZSET) y en tu historial (LIST).</p></div>
+  </section>
 </main>
 
-<div id="toast" class="toast hidden"></div>
+<footer class="footer">
+  <div class="footer-inner">
+    <div>
+      <div class="wordmark sm">TICKET<span>FLASH</span></div>
+      <p>Proyecto de Bases de Datos NoSQL · Modelo clave-valor sobre Redis Cloud.</p>
+    </div>
+    <div class="footer-keys">
+      <p class="footer-title">Estructuras en Redis</p>
+      <div class="key-chips" id="key-chips"></div>
+      <p class="footer-meta" id="footer-meta"></p>
+    </div>
+    <div>
+      <p class="footer-title">Enlaces</p>
+      <a href="/docs" target="_blank" rel="noopener">API · Swagger</a>
+      <a href="https://github.com/Otodeodo/ticketflash-redis" target="_blank" rel="noopener">Código en GitHub</a>
+    </div>
+  </div>
+</footer>
+
+<!-- ======================= MODAL: DETALLE EVENTO ======================= -->
+<div class="overlay hidden" id="event-modal" role="dialog" aria-modal="true">
+  <div class="modal modal-event">
+    <button class="close" data-close aria-label="Cerrar">×</button>
+    <div class="modal-poster" id="em-poster"></div>
+    <div class="modal-body">
+      <span class="tag" id="em-cat"></span>
+      <h2 id="em-name"></h2>
+      <ul class="facts">
+        <li><b>Cuándo</b><span id="em-date"></span></li>
+        <li><b>Dónde</b><span id="em-venue"></span></li>
+        <li><b>Precio</b><span id="em-price"></span></li>
+      </ul>
+      <div class="stock-meter">
+        <div class="meter"><i id="em-bar"></i></div>
+        <div class="meter-line"><span id="em-stock"></span><span id="em-sold"></span></div>
+      </div>
+      <div class="buy">
+        <div class="stepper">
+          <button id="qty-minus" aria-label="Menos">−</button>
+          <output id="qty">1</output>
+          <button id="qty-plus" aria-label="Más">+</button>
+        </div>
+        <button class="btn btn-volt btn-lg grow" id="em-hold">Reservar · <span id="em-total"></span></button>
+      </div>
+      <p class="fine" id="em-note">Tus entradas quedan bloqueadas 10 minutos mientras confirmas.</p>
+      <details class="admin">
+        <summary>Gestión del evento (CRUD)</summary>
+        <div class="admin-actions">
+          <button class="btn btn-line" id="em-edit">Editar</button>
+          <button class="btn btn-line" id="em-stock-add">+10 entradas</button>
+          <button class="btn btn-danger" id="em-delete">Eliminar</button>
+        </div>
+      </details>
+    </div>
+  </div>
+</div>
+
+<!-- ========================= MODAL: LOGIN ========================= -->
+<div class="overlay hidden" id="login-modal" role="dialog" aria-modal="true">
+  <div class="modal modal-sm">
+    <button class="close" data-close aria-label="Cerrar">×</button>
+    <h2 class="modal-title">Entra en TicketFlash</h2>
+    <p class="muted">Elige tu perfil. Crearemos una sesión en Redis que caduca tras 30 minutos sin actividad.</p>
+    <div class="user-list" id="user-list"></div>
+    <form id="user-form" class="stack">
+      <p class="divider"><span>o crea un perfil nuevo</span></p>
+      <input id="us-name" placeholder="Nombre" required maxlength="80">
+      <input id="us-email" type="email" placeholder="email@ejemplo.com" required>
+      <button class="btn btn-ink" type="submit">Crear perfil y entrar</button>
+    </form>
+  </div>
+</div>
+
+<!-- ======================= MODAL: FORM EVENTO ======================= -->
+<div class="overlay hidden" id="form-modal" role="dialog" aria-modal="true">
+  <div class="modal modal-sm">
+    <button class="close" data-close aria-label="Cerrar">×</button>
+    <h2 class="modal-title" id="form-title">Nuevo evento</h2>
+    <form id="event-form" class="stack">
+      <input type="hidden" id="ev-id">
+      <label>Nombre<input id="ev-name" required maxlength="120"></label>
+      <label>Recinto<input id="ev-venue" required maxlength="120"></label>
+      <div class="two">
+        <label>Fecha y hora<input id="ev-date" type="datetime-local" required></label>
+        <label>Categoría<input id="ev-category" required list="cat-list" placeholder="musica"></label>
+      </div>
+      <datalist id="cat-list"></datalist>
+      <div class="two">
+        <label>Precio (€)<input id="ev-price" type="number" min="0.01" step="0.01" required></label>
+        <label id="ev-capacity-label">Capacidad<input id="ev-capacity" type="number" min="1" required></label>
+      </div>
+      <button class="btn btn-ink" type="submit">Guardar evento</button>
+    </form>
+  </div>
+</div>
+
+<!-- ======================= DRAWER: MIS ENTRADAS ======================= -->
+<div class="scrim hidden" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-label="Mis entradas">
+  <div class="drawer-head">
+    <div>
+      <h2>Mis entradas</h2>
+      <p class="muted" id="drawer-user">Inicia sesión para ver tus reservas.</p>
+    </div>
+    <button class="close static" id="drawer-close" aria-label="Cerrar">×</button>
+  </div>
+  <div class="session-card hidden" id="session-card">
+    <div>
+      <small>Sesión activa · TTL deslizante</small>
+      <b id="session-ttl">30:00</b>
+    </div>
+    <button class="btn btn-line btn-sm" id="logout-btn">Cerrar sesión</button>
+  </div>
+  <h3 class="drawer-sub">Reservas pendientes</h3>
+  <div id="holds" class="stack"></div>
+  <h3 class="drawer-sub">Tickets confirmados</h3>
+  <div id="orders" class="stack"></div>
+</aside>
+
+<div class="toasts" id="toasts"></div>
 <script src="/static/app.js"></script>
 </body>
 </html>

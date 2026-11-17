@@ -39,6 +39,7 @@ th { background: #eef2ff; color: #312e81; }
 tr { page-break-inside: avoid; }
 figure { margin: 12pt 0; text-align: center; page-break-inside: avoid; }
 figure svg { width: 100%; height: auto; border: 1px solid #e5e7eb; border-radius: 6px; }
+figure img { width: 100%; height: auto; border: 1px solid #e5e7eb; border-radius: 6px; }
 figcaption { font-size: 9.5pt; color: #6b7280; margin-top: 4pt; font-style: italic; }
 ul, ol { padding-left: 20pt; }
 li { margin-bottom: 3pt; }

@@ -6,6 +6,10 @@ Aplicación web funcional para la asignatura de bases de datos NoSQL. Modelo
 (HTML/CSS/JS), una API REST (FastAPI) y una CLI de demostración, todas sobre
 la misma capa de repositorios que habla con Redis.
 
+* **Aplicación en línea:** <https://ticketflash-xa9o.onrender.com>
+* **API (Swagger):** <https://ticketflash-xa9o.onrender.com/docs>
+* **Repositorio:** <https://github.com/Otodeodo/ticketflash-redis>
+
 Caso de uso: una taquilla en línea donde miles de usuarios compiten por las
 mismas entradas. El sistema necesita:
 
@@ -36,7 +40,7 @@ ticketflash-redis/
 │       └── analytics.py   # ZREVRANGE, LRANGE, SCAN
 ├── scripts/seed.py        # Script de datos iniciales (seeding)
 ├── tests/                 # Pruebas con fakeredis (no requieren la nube)
-├── docs/                  # Documento de diseño (Markdown + PDF)
+├── docs/                  # Documento de diseño (Markdown + PDF) y capturas
 ├── .env.example           # Plantilla de credenciales
 ├── render.yaml            # Despliegue de la web en Render (hosting gratuito)
 ├── requirements.txt       # Dependencias de ejecución
@@ -110,16 +114,22 @@ claves del namespace `tf:*` con `SCAN` + `DEL` (nunca `FLUSHDB`).
 uvicorn app.api:app --reload
 ```
 
-Abre <http://127.0.0.1:8000/>. La interfaz permite:
+Abre <http://127.0.0.1:8000/>, o la versión publicada en Render. El diseño se inspira en
+plataformas de entradas como DICE y Fever: tipografía editorial, chips de categoría,
+carrusel "Top" y tarjetas tipo póster. La interfaz permite:
 
-* Elegir usuario e **iniciar sesión** (se ve el TTL deslizante de la sesión en cabecera).
-* Ver el catálogo con **stock en tiempo real**, filtrar por categoría (índice SET).
-* **Crear, editar, añadir stock y eliminar eventos** (CRUD completo).
-* **Reservar** entradas: aparece una cuenta atrás de 10 minutos (TTL de la clave en Redis);
-  si no se confirma, la reserva expira y el stock vuelve solo.
-* **Confirmar** la reserva en una orden, **cancelar** reservas u órdenes.
-* Ver el **ranking** de ventas (Sorted Set), la **actividad reciente** (List) y las
-  **claves por tipo** que existen en Redis.
+* **Entrar** eligiendo o creando un perfil. El panel "Mis entradas" muestra el TTL
+  deslizante de la sesión en Redis.
+* Explorar el catálogo con **buscador**, **chips de categoría** (índice SET) y **stock en
+  tiempo real**, con avisos de "Últimas" y "Agotado".
+* Ver el **Top ventas** (Sorted Set), un **ticker de actividad en directo** (List) y las
+  estadísticas de Redis: eventos, vendidas, disponibles y número de claves.
+* Abrir un evento, elegir cantidad y **reservar**. La reserva aparece en "Mis entradas" con
+  una **cuenta atrás circular** de 10 minutos. Si no se confirma, expira y el stock vuelve solo.
+* **Confirmar la compra**, **soltar** una reserva o **cancelar** una orden. Las órdenes se
+  muestran como tickets con talón.
+* **Crear, editar, añadir stock y eliminar eventos** (CRUD completo) desde el botón ＋ de la
+  cabecera y desde "Gestión del evento" en el detalle.
 
 ### 3. CLI (alternativa en terminal)
 
@@ -158,7 +168,19 @@ Endpoints principales (los usa la interfaz web):
 Las rutas que modifican reservas u órdenes requieren el encabezado
 `X-Session-Token` obtenido en `/auth/login`.
 
-### 5. Pruebas
+### 5. Despliegue en la nube (Render)
+
+La aplicación está publicada en <https://ticketflash-xa9o.onrender.com>. El archivo `render.yaml` define el servicio,
+así que para desplegar una copia propia:
+
+1. Sube el repositorio a GitHub.
+2. Abre `https://render.com/deploy?repo=<url-del-repositorio>` e inicia sesión.
+3. Pega tu URL de Redis Cloud en la variable `REDIS_URL` y pulsa **Deploy Blueprint**.
+
+Cada `git push` a `main` vuelve a desplegar automáticamente. En el plan gratuito el
+servicio se suspende tras 15 minutos sin tráfico y tarda unos 30 segundos en despertar.
+
+### 6. Pruebas
 
 ```bash
 python -m pytest -q

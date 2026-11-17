@@ -6,7 +6,8 @@
 <tr><td>Paradigma</td><td>Clave-Valor (Redis)</td></tr>
 <tr><td>Servicio en la nube</td><td>Redis Cloud (Redis Ltd.) — plan Free, DBaaS administrado, AWS us-east-1, Redis 8.6</td></tr>
 <tr><td>Lenguaje y SDK</td><td>Python 3.11+ · <code>redis-py</code> (driver oficial) · FastAPI · interfaz web HTML/JS</td></tr>
-<tr><td>Repositorio</td><td>Carpeta <code>ticketflash-redis/</code> (README, código, script de seed, pruebas)</td></tr>
+<tr><td>Aplicación en línea</td><td><code>https://ticketflash-xa9o.onrender.com</code> (Render, plan Free)</td></tr>
+<tr><td>Repositorio</td><td><code>https://github.com/Otodeodo/ticketflash-redis</code></td></tr>
 <tr><td>Autor</td><td>Alexander Pineda</td></tr>
 <tr><td>Fecha</td><td>Noviembre de 2026</td></tr>
 </table>
@@ -125,7 +126,7 @@ persistencia AOF en disco (ver 4.4).
 
   <!-- Backend -->
   <rect x="270" y="40" width="330" height="340" rx="10" fill="#ecfdf5" stroke="#059669" stroke-width="1.5"/>
-  <text x="435" y="65" text-anchor="middle" font-weight="bold" fill="#064e3b">BACKEND PYTHON (FastAPI)</text>
+  <text x="435" y="65" text-anchor="middle" font-weight="bold" fill="#064e3b">BACKEND PYTHON (FastAPI) · Render</text>
   <rect x="290" y="85" width="290" height="46" rx="6" fill="#fff" stroke="#10b981"/>
   <text x="435" y="105" text-anchor="middle">app/api.py · app/cli.py · app/static/</text>
   <text x="435" y="122" text-anchor="middle" fill="#6b7280" font-size="11">rutas REST, validación Pydantic, sirve la interfaz web</text>
@@ -178,6 +179,60 @@ con `app/keys.py` y ejecuta los comandos a través de un único cliente `redis.R
 operaciones multi-clave sensibles se envían como scripts Lua registrados (`EVALSHA`), de modo
 que Redis Cloud las ejecuta de forma atómica. Ninguna credencial aparece en el código: se
 cargan con `python-dotenv` desde `.env`, que está excluido del repositorio.
+
+**Despliegue.** Tanto la base de datos como la aplicación están en la nube. Redis Cloud
+(DBaaS) aloja la base y **Render** (PaaS, plan gratuito) ejecuta el backend FastAPI con la
+interfaz web. El archivo `render.yaml` del repositorio describe el servicio: instala
+`requirements.txt`, arranca `uvicorn app.api:app --host 0.0.0.0 --port $PORT` y comprueba
+la salud del servicio en `/health`. La URL de Redis se configura en Render como variable
+secreta (`REDIS_URL`), nunca en el código. Cada `git push` a la rama `main` vuelve a
+desplegar la aplicación automáticamente. La aplicación pública está en `https://ticketflash-xa9o.onrender.com`.
+
+### 3.1 Interfaz de usuario
+
+La interfaz web (`app/static/`) es una página única en HTML, CSS y JavaScript sin
+frameworks, que consume la API REST con `fetch`. Su diseño toma como referencia
+plataformas reales de venta de entradas. De **DICE** adopta la tipografía editorial en
+mayúsculas condensadas, el fondo claro con tinta negra y un único color de acento. De
+**Fever** adopta el buscador en la cabecera, los chips de categoría, el carrusel "Top" y las
+tarjetas tipo póster.
+
+<figure>
+<img src="img/app-inicio.jpg" alt="Pantalla de inicio de TicketFlash">
+<figcaption>Figura 2. Inicio: titular, estadísticas en vivo leídas de Redis y ticker de actividad (LIST).</figcaption>
+</figure>
+
+<figure>
+<img src="img/app-catalogo.jpg" alt="Catálogo de eventos">
+<figcaption>Figura 3. Catálogo con chips de categoría (SET por categoría), pósters por evento y stock en tiempo real.</figcaption>
+</figure>
+
+<figure>
+<img src="img/app-evento.jpg" alt="Detalle de un evento">
+<figcaption>Figura 4. Detalle del evento: selector de cantidad, reserva y acciones CRUD de gestión.</figcaption>
+</figure>
+
+<figure>
+<img src="img/app-mis-entradas.jpg" alt="Panel Mis entradas">
+<figcaption>Figura 5. "Mis entradas": TTL de la sesión, reservas con cuenta atrás circular y tickets confirmados.</figcaption>
+</figure>
+
+Cada elemento de la interfaz corresponde a una operación concreta sobre Redis:
+
+| Elemento de la interfaz | Operación en Redis |
+|---|---|
+| Indicador "Redis Cloud" y estadísticas del inicio | `PING`, `INFO`, `DBSIZE`, `SCAN` + `TYPE` |
+| Ticker "En directo" | `LRANGE tf:activity 0 11` |
+| Carrusel "Top ventas" | `ZREVRANGE tf:ranking:sales 0 4 WITHSCORES` |
+| Chips de categoría y catálogo | `SMEMBERS tf:events` + pipeline `HGETALL` / `GET` stock / `ZSCORE` / `PFCOUNT` |
+| Abrir un evento | `PFADD tf:event:<id>:visitors` (visitante único) |
+| Entrar con un perfil | `HSET tf:session:<token>` + `EXPIRE 1800` |
+| Botón "Reservar" | Script Lua: `DECRBY` stock + `HSET` + `EXPIRE 600` + `ZADD` |
+| Cuenta atrás de la reserva | `TTL tf:hold:<id>`, resincronizada cada 10 s |
+| "Confirmar compra" | Script Lua: `DEL` reserva + `HSET` orden + `LPUSH` + `ZINCRBY` + `LTRIM` |
+| "Soltar" reserva / cancelar orden | Script Lua con `ZREM` + `INCRBY` / pipeline `MULTI`/`EXEC` |
+| Crear, editar, +10 entradas, eliminar evento | `HSET` + `SADD` / `HSET` + `DEL` caché / `INCRBY` / `DEL` + `SREM` + `ZREM` |
+| "Cerrar sesión" | `DEL tf:session:<token>` |
 
 ## 4. Diseño del modelo NoSQL
 
@@ -288,7 +343,7 @@ otras aplicaciones y limpiar la base con `SCAN tf:*` sin tocar claves ajenas. Lo
   <line x1="580" y1="200" x2="628" y2="270" stroke="#6b7280" stroke-width="1.2" marker-end="url(#a2)"/>
   <text x="450" y="420" font-size="12" fill="#374151" font-family="Segoe UI, Arial" text-anchor="middle">Naranja: catálogo y stock · Azul: datos volátiles con TTL · Verde: datos persistentes y analítica</text>
 </svg>
-<figcaption>Figura 2. Estructuras de datos del modelo con valores de ejemplo tras ejecutar el seed.</figcaption>
+<figcaption>Figura 6. Estructuras de datos del modelo con valores de ejemplo tras ejecutar el seed.</figcaption>
 </figure>
 
 * **HASH para entidades** (evento, usuario, orden, reserva, sesión): permite leer o
