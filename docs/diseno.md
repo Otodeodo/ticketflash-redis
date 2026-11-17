@@ -185,8 +185,8 @@ cargan con `python-dotenv` desde `.env`, que está excluido del repositorio.
 interfaz web. El archivo `render.yaml` del repositorio describe el servicio: instala
 `requirements.txt`, arranca `uvicorn app.api:app --host 0.0.0.0 --port $PORT` y comprueba
 la salud del servicio en `/health`. La URL de Redis se configura en Render como variable
-secreta (`REDIS_URL`), nunca en el código. Cada `git push` a la rama `main` vuelve a
-desplegar la aplicación automáticamente. La aplicación pública está en `https://ticketflash-xa9o.onrender.com`.
+secreta (`REDIS_URL`), nunca en el código. Tras cada `git push` a la rama `main`, la
+versión nueva se publica con *Manual Deploy* desde el panel de Render. La aplicación pública está en `https://ticketflash-xa9o.onrender.com`.
 
 ### 3.1 Interfaz de usuario
 

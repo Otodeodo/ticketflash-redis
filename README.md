@@ -177,7 +177,9 @@ así que para desplegar una copia propia:
 2. Abre `https://render.com/deploy?repo=<url-del-repositorio>` e inicia sesión.
 3. Pega tu URL de Redis Cloud en la variable `REDIS_URL` y pulsa **Deploy Blueprint**.
 
-Cada `git push` a `main` vuelve a desplegar automáticamente. En el plan gratuito el
+Tras un `git push` a `main`, despliega la versión nueva desde el panel de Render con
+**Manual Deploy → Deploy latest commit**. Si conectas tu cuenta de GitHub a Render, el
+despliegue pasa a ser automático en cada push. En el plan gratuito el
 servicio se suspende tras 15 minutos sin tráfico y tarda unos 30 segundos en despertar.
 
 ### 6. Pruebas
