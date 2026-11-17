@@ -1,0 +1,23 @@
+# Blueprint de Render: despliega la aplicación web como servicio gratuito.
+# La URL de Redis Cloud se introduce como secreto en el panel (sync: false).
+services:
+  - type: web
+    name: ticketflash
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.api:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.7
+      - key: REDIS_URL
+        sync: false
+      - key: KEY_PREFIX
+        value: tf
+      - key: SESSION_TTL_SECONDS
+        value: "1800"
+      - key: HOLD_TTL_SECONDS
+        value: "600"
+      - key: CACHE_TTL_SECONDS
+        value: "60"
