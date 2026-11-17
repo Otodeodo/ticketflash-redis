@@ -1,28 +1,38 @@
 <div class="cover">
-<p class="kicker">Desarrollo e Integración de Aplicaciones con Bases de Datos NoSQL en la Nube</p>
-<h1 class="title">TicketFlash</h1>
-<p class="subtitle">Venta de entradas con reservas temporales sobre Redis Cloud<br>Documentación de Diseño y Justificación — Modelo Clave-Valor</p>
-<table class="meta">
-<tr><td>Paradigma</td><td>Clave-Valor (Redis)</td></tr>
-<tr><td>Servicio en la nube</td><td>Redis Cloud (Redis Ltd.) — plan Free, DBaaS administrado, AWS us-east-1, Redis 8.6</td></tr>
-<tr><td>Lenguaje y SDK</td><td>Python 3.11+ · <code>redis-py</code> (driver oficial) · FastAPI · interfaz web HTML/JS</td></tr>
-<tr><td>Aplicación en línea</td><td><code>https://ticketflash-xa9o.onrender.com</code> (Render, plan Free)</td></tr>
-<tr><td>Repositorio</td><td><code>https://github.com/Otodeodo/ticketflash-redis</code></td></tr>
-<tr><td>Autor</td><td>Alexander Pineda</td></tr>
-<tr><td>Fecha</td><td>Noviembre de 2026</td></tr>
-</table>
+<div class="cover-top">
+<span class="brand">TICKET<span>FLASH</span></span>
+<span class="course">Bases de Datos NoSQL en la Nube</span>
+</div>
+<div class="cover-main">
+<p class="kicker">Documentación de diseño y justificación</p>
+<h1 class="title">TICKET<br>FLASH<mark>.</mark></h1>
+<p class="subtitle">Venta de entradas con reservas temporales sobre Redis Cloud. Modelo clave-valor.</p>
+</div>
+<div class="cover-grid">
+<div><small>Paradigma</small><b>Clave-Valor</b></div>
+<div><small>Base de datos</small><b>Redis Cloud 8.6 · AWS</b></div>
+<div><small>Lenguaje y SDK</small><b>Python · redis-py</b></div>
+<div><small>Despliegue</small><b>Render (PaaS)</b></div>
+</div>
+<div class="cover-foot">
+<div><small>Autor</small><b>Alexander Pineda</b></div>
+<div><small>Fecha</small><b>Noviembre de 2026</b></div>
+<div><small>Aplicación</small><b>ticketflash-xa9o.onrender.com</b></div>
+<div><small>Código</small><b>github.com/Otodeodo/ticketflash-redis</b></div>
+</div>
 </div>
 
 <div class="toc">
-<h2>Contenido</h2>
+<p class="kicker dark">Índice</p>
+<h2 class="toc-title">Contenido</h2>
 <ol>
-<li>Introducción y dominio del problema</li>
-<li>Justificación del paradigma Clave-Valor frente al modelo relacional</li>
-<li>Arquitectura de la solución</li>
-<li>Diseño del modelo NoSQL</li>
-<li>Catálogo de consultas</li>
-<li>Consistencia, rendimiento y limitaciones</li>
-<li>Conclusiones</li>
+<li><span>01</span>Introducción y dominio del problema</li>
+<li><span>02</span>Justificación del paradigma Clave-Valor frente al modelo relacional</li>
+<li><span>03</span>Arquitectura de la solución e interfaz de usuario</li>
+<li><span>04</span>Diseño del modelo NoSQL</li>
+<li><span>05</span>Catálogo de consultas</li>
+<li><span>06</span>Consistencia, rendimiento y limitaciones</li>
+<li><span>07</span>Conclusiones</li>
 </ol>
 </div>
 
