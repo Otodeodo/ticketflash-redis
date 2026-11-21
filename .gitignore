@@ -10,3 +10,4 @@ docs/*.html
 .devdata/
 backups/
 *.dump
+.tools/

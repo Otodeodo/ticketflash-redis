@@ -67,7 +67,9 @@ ticketflash-redis/
 
 * Python 3.12 (recomendado; las pruebas con PostgreSQL embebido requieren Python ≤ 3.13).
 * Una base **PostgreSQL** (Neon gratis: <https://neon.tech>) y una **Redis Cloud** (plan gratis: <https://redis.io/try-free/>).
-* Para respaldos: clientes de PostgreSQL (`pg_dump`, `pg_restore`) de la **misma versión mayor** que el servidor.
+* Para respaldos: clientes de PostgreSQL (`pg_dump`, `pg_restore`) de la **misma versión mayor** que el servidor
+  (Neon usa PostgreSQL 18). Descárgalos y apunta `PG_BIN` a su carpeta `bin` en `.env`; deben incluir soporte SSL
+  (el `pg_dump` que trae `pgserver` no lo tiene, solo sirve para pruebas locales).
 
 ## Instalación
 
@@ -203,8 +205,8 @@ powershell -ExecutionPolicy Bypass -File scripts\schedule_backup.ps1 -Hora 02:30
 ## Despliegue en Render
 
 `render.yaml` define el servicio. En el panel de Render añade como secretos `DATABASE_URL` (usuario `tf_app`)
-y `REDIS_URL`. Tras cada `git push`: **Manual Deploy → Deploy latest commit** (o conecta GitHub para despliegue
-automático). El plan gratuito suspende el servicio tras 15 min sin tráfico (~30 s en despertar).
+y `REDIS_URL`. El despliegue es **automático en cada `git push` a `main`** (Auto-Deploy: On Commit, también en `render.yaml`);
+si algún cambio no se publica, usa **Manual Deploy → Deploy latest commit**. El plan gratuito suspende el servicio tras 15 min sin tráfico (~30 s en despertar).
 
 ## Pruebas
 
