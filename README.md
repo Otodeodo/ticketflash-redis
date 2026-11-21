@@ -205,8 +205,8 @@ powershell -ExecutionPolicy Bypass -File scripts\schedule_backup.ps1 -Hora 02:30
 ## Despliegue en Render
 
 `render.yaml` define el servicio. En el panel de Render añade como secretos `DATABASE_URL` (usuario `tf_app`)
-y `REDIS_URL`. El despliegue es **automático en cada `git push` a `main`** (Auto-Deploy: On Commit, también en `render.yaml`);
-si algún cambio no se publica, usa **Manual Deploy → Deploy latest commit**. El plan gratuito suspende el servicio tras 15 min sin tráfico (~30 s en despertar).
+y `REDIS_URL`. Tras cada `git push` a `main` publica la versión nueva con **Manual Deploy → Deploy latest commit**
+(el ajuste *Auto-Deploy: On Commit* está activo, pero en este servicio el push no dispara el despliegue por sí solo). El plan gratuito suspende el servicio tras 15 min sin tráfico (~30 s en despertar).
 
 ## Pruebas
 

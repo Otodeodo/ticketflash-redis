@@ -629,7 +629,7 @@ ya creados; después se ejecutan los mismos pasos 4–6 apuntando a `localhost`.
 memoria con datos de demostración, solo para desarrollo.
 
 **Despliegue en Render:** `render.yaml` define el servicio; en el panel se cargan como secretos `DATABASE_URL`
-(usuario `tf_app`) y `REDIS_URL`. El despliegue es automático en cada `git push` a `main` (*Auto-Deploy: On Commit*); si no se dispara, *Manual Deploy → Deploy latest commit*.
+(usuario `tf_app`) y `REDIS_URL`. Tras cada `git push` a `main`, publicar con *Manual Deploy → Deploy latest commit*.
 
 ### 7.2 Uso de la aplicación web (cliente)
 
