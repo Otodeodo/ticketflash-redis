@@ -25,7 +25,8 @@ def _int_env(name: str, default: int) -> int:
 class Settings:
     """Valores de configuración inmutables."""
 
-    # Conexión. Si REDIS_URL está definida tiene prioridad sobre host/port/password.
+    # --- Redis (no relacional) ------------------------------------------------
+    # Si REDIS_URL está definida tiene prioridad sobre host/port/password.
     redis_url: str | None
     redis_host: str
     redis_port: int
@@ -43,6 +44,17 @@ class Settings:
 
     # Tamaño máximo del feed de actividad (LTRIM).
     activity_max: int
+
+    # --- PostgreSQL (relacional) ----------------------------------------------
+    # Cadena de conexión del usuario de la APLICACIÓN (rol tf_app, mínimo privilegio).
+    database_url: str | None
+    pg_pool_min: int
+    pg_pool_max: int
+    pg_connect_timeout: int
+
+    # --- Seguridad --------------------------------------------------------------
+    login_max_attempts: int      # intentos fallidos permitidos
+    login_block_seconds: int     # ventana/bloqueo (Redis INCR + EXPIRE)
 
     @property
     def connection_kwargs(self) -> dict:
@@ -76,6 +88,12 @@ def load_settings() -> Settings:
         hold_ttl=_int_env("HOLD_TTL_SECONDS", 600),
         cache_ttl=_int_env("CACHE_TTL_SECONDS", 60),
         activity_max=_int_env("ACTIVITY_MAX", 100),
+        database_url=os.getenv("DATABASE_URL") or None,
+        pg_pool_min=_int_env("PG_POOL_MIN", 1),
+        pg_pool_max=_int_env("PG_POOL_MAX", 10),
+        pg_connect_timeout=_int_env("PG_CONNECT_TIMEOUT", 10),
+        login_max_attempts=_int_env("LOGIN_MAX_ATTEMPTS", 5),
+        login_block_seconds=_int_env("LOGIN_BLOCK_SECONDS", 300),
     )
 
 

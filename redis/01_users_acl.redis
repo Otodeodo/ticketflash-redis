@@ -1,0 +1,33 @@
+# =============================================================================
+# TicketFlash · Usuarios, roles (ACL) y privilegios en REDIS
+# 01_users_acl.redis  -  Mínimo privilegio con Redis ACL (Redis 6+).
+#
+# Ejecutar con el usuario administrador de Redis (default / admin):
+#     redis-cli -u "redis://default:<ADMIN_PWD>@<host>:<port>" < redis/01_users_acl.redis
+# o desde docker compose (servicio redis-acl, que sustituye las contraseñas).
+# ANTES de ejecutarlo cambia las contraseñas CAMBIA_ESTA_CLAVE_REDIS_*.
+#
+# Sintaxis ACL (se evalúa de izquierda a derecha):
+#   reset        -> limpia reglas previas      on / off  -> habilita / deshabilita
+#   >clave       -> contraseña                 ~tf:*     -> solo claves con prefijo tf:
+#   &*           -> canales Pub/Sub            +@x / -@x -> permite / quita categorías de comandos
+#
+#   Usuario        Quién lo usa              Puede
+#   -------------  ------------------------  ---------------------------------------------
+#   tf_app         API / interfaz web        leer y escribir SOLO claves tf:*; sin FLUSHALL,
+#                                            KEYS, CONFIG, DEBUG, SHUTDOWN, ACL...
+#   tf_readonly    consultas / monitoreo     solo lectura de tf:*
+#   tf_backup      scripts/backup.py         SCAN, DUMP, PTTL, TYPE (exportar claves)
+#   default        (cuenta por defecto)      DESHABILITADA al final -> nadie entra sin usuario
+# =============================================================================
+
+ACL SETUSER tf_app reset on >CAMBIA_ESTA_CLAVE_REDIS_APP ~tf:* &* +@all -@dangerous -@admin +info +dbsize +client|setinfo +client|setname
+ACL SETUSER tf_readonly reset on >CAMBIA_ESTA_CLAVE_REDIS_RO ~tf:* -@all +@read -@dangerous +info +ping +dbsize +client|setinfo
+ACL SETUSER tf_backup reset on >CAMBIA_ESTA_CLAVE_REDIS_BACKUP ~tf:* -@all +scan +dump +pttl +type +ping +info +dbsize +client|setinfo
+
+# Verificación (deben responder OK / (error) NOPERM según el caso):
+#   redis-cli --user tf_app --pass ... SET tf:prueba 1          -> OK
+#   redis-cli --user tf_app --pass ... SET otra:clave 1         -> (error) NOPERM no permissions to access a key
+#   redis-cli --user tf_app --pass ... FLUSHALL                 -> (error) NOPERM ... FLUSHALL
+#   redis-cli --user tf_readonly --pass ... SET tf:prueba 2     -> (error) NOPERM ... SET
+ACL LIST

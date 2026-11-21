@@ -7,3 +7,6 @@ venv/
 docs/*.html
 .claude/
 *.zip
+.devdata/
+backups/
+*.dump

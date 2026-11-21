@@ -2,7 +2,17 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, EmailStr, Field
+from datetime import datetime
+
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+
+def _check_date(value: str) -> str:
+    try:
+        datetime.fromisoformat(value)
+    except ValueError as exc:
+        raise ValueError("Usa el formato ISO 8601, p. ej. 2026-12-05T20:00") from exc
+    return value
 
 
 class EventIn(BaseModel):
@@ -13,6 +23,8 @@ class EventIn(BaseModel):
     price: float = Field(gt=0)
     capacity: int = Field(gt=0)
 
+    _date = field_validator("date")(_check_date)
+
 
 class EventUpdate(BaseModel):
     name: str | None = None
@@ -20,6 +32,12 @@ class EventUpdate(BaseModel):
     date: str | None = None
     category: str | None = None
     price: float | None = Field(default=None, gt=0)
+    version: int | None = Field(default=None, description="Versión leída: activa el bloqueo optimista")
+
+    @field_validator("date")
+    @classmethod
+    def _date(cls, value):
+        return value if value is None else _check_date(value)
 
 
 class EventOut(BaseModel):
@@ -32,29 +50,36 @@ class EventOut(BaseModel):
     capacity: int
     stock: int
     sold: int = 0
+    version: int = 1
     unique_visitors: int = 0
 
 
-class UserIn(BaseModel):
+class RegisterIn(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     email: EmailStr
+    password: str = Field(min_length=8, max_length=128)
 
 
 class UserOut(BaseModel):
     id: str
     name: str
     email: str
+    role: str
+    active: bool = True
     created_at: str
 
 
 class LoginIn(BaseModel):
-    user_id: str
+    email: str = Field(min_length=3, max_length=254)
+    password: str = Field(min_length=1, max_length=128)
 
 
 class SessionOut(BaseModel):
     token: str
     user_id: str
+    role: str
     ttl_seconds: int
+    user: UserOut
 
 
 class HoldIn(BaseModel):

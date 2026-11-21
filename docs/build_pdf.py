@@ -1,6 +1,7 @@
-"""Genera docs/diseno.pdf a partir de docs/diseno.md.
+"""Genera un PDF a partir de un documento Markdown (con portada y estilos de TicketFlash).
 
-Uso:  python docs/build_pdf.py
+Uso:  python docs/build_pdf.py                      # docs/diseno.md -> docs/diseno.pdf (entrega NoSQL)
+      python docs/build_pdf.py proyecto_final       # docs/proyecto_final.md -> docs/proyecto_final.pdf
 Requiere: pip install markdown   y Microsoft Edge o Chrome (modo headless).
 Las fuentes (Anton, Inter) se cargan de Google Fonts; sin conexión se usan fuentes del sistema.
 """
@@ -16,9 +17,14 @@ import sys
 import markdown
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-MD = os.path.join(HERE, "diseno.md")
-HTML = os.path.join(HERE, "diseno.html")
-PDF = os.path.join(HERE, "diseno.pdf")
+NAME = sys.argv[1] if len(sys.argv) > 1 else "diseno"
+MD = os.path.join(HERE, f"{NAME}.md")
+HTML = os.path.join(HERE, f"{NAME}.html")
+PDF = os.path.join(HERE, f"{NAME}.pdf")
+FOOTER = {"diseno": "Diseño y justificación NoSQL",
+          "proyecto_final": "Proyecto final · Bases de Datos Avanzadas"}.get(NAME, NAME)
+TITLE = {"diseno": "TicketFlash · Diseño y justificación NoSQL",
+         "proyecto_final": "TicketFlash · Proyecto final de Bases de Datos Avanzadas"}.get(NAME, NAME)
 
 FONTS = ('<link rel="preconnect" href="https://fonts.googleapis.com">'
          '<link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800'
@@ -123,7 +129,7 @@ def build_html() -> str:
     with open(MD, encoding="utf-8") as fh:
         body = markdown.markdown(fh.read(), extensions=["tables", "fenced_code", "md_in_html"])
     html = (f'<!doctype html><html lang="es"><head><meta charset="utf-8">'
-            f'<title>TicketFlash · Diseño y justificación NoSQL</title>{FONTS}<style>{CSS}</style></head>'
+            f'<title>{TITLE}</title>{FONTS}<style>{CSS.replace("Diseño y justificación NoSQL", FOOTER)}</style></head>'
             f'<body>{decorate(body)}</body></html>')
     with open(HTML, "w", encoding="utf-8") as fh:
         fh.write(html)

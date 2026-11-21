@@ -1,5 +1,6 @@
 /* TicketFlash · interfaz web.
-   Consume la API REST (FastAPI), que a su vez usa redis-py contra Redis Cloud. */
+   Consume la API REST (FastAPI). Los datos permanentes viven en PostgreSQL (relacional)
+   y el estado en caliente (stock, reservas, sesiones, ranking) en Redis (no relacional). */
 (() => {
   "use strict";
   const $ = (id) => document.getElementById(id);
@@ -7,7 +8,7 @@
 
   const state = {
     token: sessionStorage.getItem("tf_token"), user: null, sessionTtl: 0,
-    users: [], events: [], holds: [], orders: [], ranking: [],
+    events: [], holds: [], orders: [], ranking: [],
     category: "", query: "", current: null, qty: 1,
   };
 
@@ -88,17 +89,10 @@
   }
 
   // ----------------------------------------------------------------- sesión
-  async function loadUsers() {
-    state.users = await api("/users");
-    $("user-list").innerHTML = state.users.map((u) => `
-      <button class="user-pick" data-id="${esc(u.id)}">
-        <span class="av">${esc(initials(u.name))}</span>
-        <span><b>${esc(u.name)}</b><small>${esc(u.email)}</small></span>
-      </button>`).join("") || '<p class="muted">No hay perfiles todavía.</p>';
-  }
+  const isAdmin = () => state.user && state.user.role === "admin";
 
-  async function login(userId) {
-    const s = await api("/auth/login", { method: "POST", body: { user_id: userId } });
+  async function startSession(path, body) {
+    const s = await api(path, { method: "POST", body });
     state.token = s.token; state.sessionTtl = s.ttl_seconds;
     sessionStorage.setItem("tf_token", s.token);
     close("login-modal");
@@ -121,11 +115,14 @@
     $("login-open").classList.toggle("hidden", logged);
     $("hero-login").classList.toggle("hidden", logged);
     $("avatar-btn").classList.toggle("hidden", !logged);
+    $("admin-btn").classList.toggle("hidden", !isAdmin());
+    $("panel-btn").classList.toggle("hidden", !isAdmin());
+    document.querySelector("details.admin").classList.toggle("hidden", !isAdmin());
     $("session-card").classList.toggle("hidden", !logged);
     if (logged) {
       $("avatar-btn").textContent = initials(state.user.name);
       $("avatar-btn").title = `${state.user.name} · abrir mis entradas`;
-      $("drawer-user").textContent = `${state.user.name} · ${state.user.email}`;
+      $("drawer-user").textContent = `${state.user.name} · ${state.user.email}${isAdmin() ? " · administrador" : ""}`;
       $("session-ttl").textContent = mmss(state.sessionTtl);
     } else {
       $("drawer-user").textContent = "Inicia sesión para ver tus reservas.";
@@ -216,7 +213,7 @@
     }).join("");
   }
 
-  function renderStats(keys, health) {
+  function renderStats(keys, health, pg) {
     const sold = state.events.reduce((s, e) => s + e.sold, 0);
     const stock = state.events.reduce((s, e) => s + e.stock, 0);
     $("st-events").textContent = state.events.length;
@@ -225,9 +222,12 @@
     $("st-keys").textContent = health.db_size;
     $("key-chips").innerHTML = Object.entries(keys).sort((a, b) => b[1] - a[1])
       .map(([k, v]) => `<span>${esc(k)}<b>${v}</b></span>`).join("");
-    $("footer-meta").textContent = `Redis ${health.redis_version} · ${health.used_memory_human} en memoria · ${health.db_size} claves`;
-    const c = $("conn"); c.className = "live ok";
-    c.querySelector("b").textContent = `Redis Cloud ${health.redis_version}`;
+    $("pg-chips").innerHTML = Object.entries(pg).map(([k, v]) => `<span>${esc(k)}<b>${v}</b></span>`).join("");
+    $("footer-meta").textContent = `Redis ${health.redis_version} · ${health.used_memory_human} en memoria · ${health.db_size} claves · PostgreSQL ${health.pg_version} · ${health.pg_size}`;
+    const c = $("conn"); c.className = `live ${health.redis_ok ? "ok" : "err"}`;
+    c.querySelector("b").textContent = `Redis ${health.redis_version || ""}`;
+    const p = $("conn-pg"); p.className = `live ${health.postgres_ok ? "ok" : "err"}`;
+    p.querySelector("b").textContent = `PostgreSQL ${(health.pg_version || "").split(".")[0]}`;
   }
 
   function renderTicker(activity) {
@@ -306,8 +306,11 @@
     const body = { name: $("ev-name").value.trim(), venue: $("ev-venue").value.trim(), date: $("ev-date").value,
                    category: $("ev-category").value.trim().toLowerCase(), price: parseFloat($("ev-price").value) };
     try {
-      if (id) { await api(`/events/${id}`, { method: "PATCH", body }); toast("Evento actualizado", "ok"); }
-      else { body.capacity = parseInt($("ev-capacity").value, 10); const e = await api("/events", { method: "POST", body }); toast(`Evento «${e.name}» publicado`, "ok"); }
+      if (id) {
+        // Bloqueo optimista: se envía la versión leída; si otro admin editó antes, la API responde 409.
+        body.version = state.events.find((x) => x.id === id).version;
+        await api(`/events/${id}`, { method: "PATCH", auth: true, body }); toast("Evento actualizado en PostgreSQL", "ok");
+      } else { body.capacity = parseInt($("ev-capacity").value, 10); const e = await api("/events", { method: "POST", auth: true, body }); toast(`Evento «${e.name}» publicado`, "ok"); }
       close("form-modal");
       await refreshAll();
     } catch (err) { toast(err.message, "err"); }
@@ -315,13 +318,13 @@
 
   async function deleteCurrent() {
     const e = state.events.find((x) => x.id === state.current);
-    if (!confirm(`¿Eliminar «${e.name}»? Se borrarán sus claves en Redis.`)) return;
-    try { await api(`/events/${e.id}`, { method: "DELETE" }); close("event-modal"); state.current = null; toast("Evento eliminado", "ok"); await refreshAll(); }
+    if (!confirm(`¿Eliminar «${e.name}»? Se borrará de PostgreSQL y sus claves de Redis (solo si no tiene órdenes).`)) return;
+    try { await api(`/events/${e.id}`, { method: "DELETE", auth: true }); close("event-modal"); state.current = null; toast("Evento eliminado", "ok"); await refreshAll(); }
     catch (err) { toast(err.message, "err"); }
   }
 
   async function addStockCurrent() {
-    try { const r = await api(`/events/${state.current}/stock?qty=10`, { method: "POST" }); toast(`Stock actualizado: ${r.stock} entradas`, "ok"); await refreshAll(); }
+    try { const r = await api(`/events/${state.current}/stock?qty=10`, { method: "POST", auth: true }); toast(`Stock actualizado: ${r.stock} entradas`, "ok"); await refreshAll(); }
     catch (err) { toast(err.message, "err"); }
   }
 
@@ -392,10 +395,64 @@
     await refreshAll();
   }
 
+  // ------------------------------------------------- panel de administración
+  const table = (cols, rows) => `<table class="tbl"><thead><tr>${cols.map(([h, cls]) => `<th class="${cls || ""}">${h}</th>`).join("")}</tr></thead>
+    <tbody>${rows.join("") || `<tr><td colspan="${cols.length}" class="muted">Sin datos.</td></tr>`}</tbody></table>`;
+
+  async function showTab(tab) {
+    state.tab = tab;
+    document.querySelectorAll("#panel-tabs .tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === tab));
+    const box = $("panel-body"); box.innerHTML = '<p class="muted">Cargando…</p>';
+    try {
+      if (tab === "sales") {
+        const r = await api("/admin/sales", { auth: true });
+        box.innerHTML = '<p class="muted">Vista SQL <code>v_sales_by_event</code> (agregación con FILTER).</p>' +
+          table([["Evento"], ["Entradas", "num"], ["Órdenes", "num"], ["Ingresos", "num"]],
+            r.map((x) => `<tr><td>${esc(x.name)}</td><td class="num">${x.tickets_sold}</td><td class="num">${x.orders}</td><td class="num">${money(x.revenue)}</td></tr>`));
+      } else if (tab === "orders") {
+        const r = await api("/orders", { auth: true });
+        box.innerHTML = table([["#"], ["Usuario"], ["Evento"], ["Cant.", "num"], ["Total", "num"], ["Estado"], [""]],
+          r.map((o) => `<tr><td>${o.id}</td><td>${o.user_id}</td><td>${esc(eventName(o.event_id))}</td><td class="num">${o.qty}</td><td class="num">${money(o.total)}</td>
+            <td><span class="pill ${o.status === "CONFIRMED" ? "ok" : "bad"}">${o.status}</span></td>
+            <td>${o.status === "CONFIRMED" ? `<button class="link-btn" data-order="${o.id}">Cancelar</button>` : ""}</td></tr>`));
+      } else if (tab === "users") {
+        const r = await api("/users", { auth: true });
+        box.innerHTML = table([["#"], ["Nombre"], ["Correo"], ["Rol"], [""]],
+          r.map((u) => `<tr><td>${u.id}</td><td>${esc(u.name)}</td><td>${esc(u.email)}</td><td><span class="pill">${u.role}</span></td>
+            <td>${u.role === "admin" ? "" : `<button class="link-btn" data-user="${u.id}">Eliminar</button>`}</td></tr>`));
+      } else if (tab === "audit") {
+        const r = await api("/admin/audit?limit=40", { auth: true });
+        box.innerHTML = '<p class="muted">Escrita por triggers <code>SECURITY DEFINER</code>: la aplicación solo puede leerla.</p>' +
+          table([["Fecha"], ["Usuario BD"], ["Acción"], ["Entidad"], ["Detalle"]],
+            r.map((a) => `<tr><td>${new Date(a.at).toLocaleString("es")}</td><td>${esc(a.db_user)}</td><td><span class="pill">${a.action}</span></td>
+              <td>${a.entity} #${a.entity_id}</td><td><code>${esc(JSON.stringify(a.detail))}</code></td></tr>`));
+      } else if (tab === "sync") {
+        const r = await api("/admin/consistency", { auth: true });
+        box.innerHTML = `<div class="panel-actions"><span class="pill ${r.ok ? "ok" : "bad"}">${r.ok ? "PostgreSQL y Redis coinciden" : "Hay desfases"}</span>
+          <button class="btn btn-line btn-sm" id="reconcile-btn">Reconstruir Redis desde PostgreSQL</button></div>` +
+          table([["Evento"], ["Vendidas PG", "num"], ["Reservadas", "num"], ["Stock Redis", "num"], ["Esperado", "num"], ["Estado"]],
+            r.events.map((e) => `<tr><td>${esc(e.name)}</td><td class="num">${e.pg_sold}</td><td class="num">${e.held}</td>
+              <td class="num">${e.redis_stock ?? "—"}</td><td class="num">${e.redis_expected}</td>
+              <td><span class="pill ${e.ok ? "ok" : "bad"}">${e.ok ? "OK" : "DESFASE"}</span></td></tr>`));
+      }
+    } catch (err) { box.innerHTML = `<p class="muted">${esc(err.message)}</p>`; }
+  }
+
+  $("panel-body").onclick = async (e) => {
+    try {
+      const rec = e.target.closest("#reconcile-btn");
+      if (rec) { const r = await api("/admin/reconcile", { method: "POST", auth: true }); toast(`Reconciliación: ${r.fixed} correcciones`, "ok"); await refreshAll(); return showTab("sync"); }
+      const ord = e.target.closest("[data-order]");
+      if (ord && confirm(`¿Cancelar la orden #${ord.dataset.order}?`)) { await api(`/orders/${ord.dataset.order}/cancel`, { method: "POST", auth: true }); toast("Orden cancelada", "ok"); await refreshAll(); return showTab("orders"); }
+      const usr = e.target.closest("[data-user]");
+      if (usr && confirm(`¿Eliminar al usuario #${usr.dataset.user}?`)) { await api(`/users/${usr.dataset.user}`, { method: "DELETE", auth: true }); toast("Usuario eliminado", "ok"); return showTab("users"); }
+    } catch (err) { toast(err.message, "err"); }
+  };
+
   // ------------------------------------------------------------- refresco
   async function refreshMine() {
     if (!state.user) return;
-    const [holds, orders] = await Promise.all([api(`/users/${state.user.id}/holds`), api(`/users/${state.user.id}/orders`)]);
+    const [holds, orders] = await Promise.all([api(`/users/${state.user.id}/holds`, { auth: true }), api(`/users/${state.user.id}/orders`, { auth: true })]);
     state.holds = holds; state.orders = orders;
     renderHolds(); renderOrders();
   }
@@ -404,21 +461,23 @@
   async function refreshAll() {
     if (refreshing) return; refreshing = true;
     try {
-      const [events, ranking, activity, keys, health] = await Promise.all([
+      const [events, ranking, activity, keys, health, pg] = await Promise.all([
         api("/events"), api("/ranking?limit=5"), api("/activity?limit=12"), api("/stats/keys"), api("/health"),
+        api("/stats/postgres"),
       ]);
       state.events = events; state.ranking = ranking;
-      renderChips(); renderGrid(); renderTop(); renderTicker(activity); renderStats(keys, health);
+      renderChips(); renderGrid(); renderTop(); renderTicker(activity); renderStats(keys, health, pg);
       if (state.current && !$("event-modal").classList.contains("hidden")) renderModal();
       await refreshMine();
     } catch (e) {
       const c = $("conn"); c.className = "live err"; c.querySelector("b").textContent = "Sin conexión";
+      $("conn-pg").className = "live err";
       console.warn(e);
     } finally { refreshing = false; }
   }
 
   // ------------------------------------------------------------- eventos DOM
-  $("login-open").onclick = $("hero-login").onclick = () => { loadUsers(); open("login-modal"); };
+  $("login-open").onclick = $("hero-login").onclick = () => { open("login-modal"); $("lg-email").focus(); };
   $("avatar-btn").onclick = $("bag-btn").onclick = () => toggleDrawer(true);
   $("drawer-close").onclick = $("scrim").onclick = () => toggleDrawer(false);
   $("logout-btn").onclick = logout;
@@ -432,14 +491,20 @@
   $("qty-plus").onclick = () => { state.qty = Math.min(10, state.qty + 1); renderModal(); };
   $("search").oninput = (e) => { state.query = e.target.value; renderGrid(); };
 
-  $("user-list").onclick = (e) => { const b = e.target.closest(".user-pick"); if (b) login(b.dataset.id).catch((err) => toast(err.message, "err")); };
+  $("login-form").onsubmit = async (e) => {
+    e.preventDefault();
+    try { await startSession("/auth/login", { email: $("lg-email").value.trim(), password: $("lg-password").value }); e.target.reset(); }
+    catch (err) { toast(err.message, "err"); }
+  };
   $("user-form").onsubmit = async (e) => {
     e.preventDefault();
     try {
-      const u = await api("/users", { method: "POST", body: { name: $("us-name").value.trim(), email: $("us-email").value.trim() } });
-      e.target.reset(); await login(u.id);
+      await startSession("/auth/register", { name: $("us-name").value.trim(), email: $("us-email").value.trim(), password: $("us-password").value });
+      e.target.reset();
     } catch (err) { toast(err.message, "err"); }
   };
+  $("panel-btn").onclick = () => { open("panel-modal"); showTab(state.tab || "sales"); };
+  $("panel-tabs").onclick = (e) => { const t = e.target.closest(".tab"); if (t) showTab(t.dataset.tab); };
   $("chips").onclick = (e) => { const c = e.target.closest(".chip"); if (!c) return; state.category = c.dataset.cat; renderChips(); renderGrid(); };
   $("grid").onclick = (e) => { const c = e.target.closest(".card"); if (c) openEvent(c.dataset.id); };
   $("top-row").onclick = (e) => { const c = e.target.closest(".top-card"); if (c) openEvent(c.dataset.id); };

@@ -1,4 +1,4 @@
-"""Repositorio de reservas temporales (holds).
+"""Repositorio de reservas temporales (holds) — Redis.
 
 Una reserva bloquea entradas durante `HOLD_TTL_SECONDS`. Si el usuario no
 confirma a tiempo, la clave HASH expira sola gracias al TTL y el stock se
@@ -12,28 +12,37 @@ Estructuras:
 Por qué dos estructuras: cuando Redis expira `tf:hold:<id>` ya no podemos
 leer cuántas entradas bloqueaba. Por eso el miembro del ZSET codifica
 "hold_id:event_id:user_id:qty" y así podemos devolver el stock sin la clave original.
+
+Concurrencia: crear una reserva es un script Lua (comprobar + descontar +
+registrar en una sola operación atómica). Redis ejecuta un script a la vez, así
+que 1000 clientes compitiendo por las últimas entradas nunca sobrevenden.
 """
 
 from __future__ import annotations
 
 from app import keys
 from app.config import settings
-from app.db import Database
-from app.repositories.common import ConflictError, NotFoundError, next_id, now_iso, now_ts
+from app.repositories.common import (ConflictError, ForbiddenError, NotFoundError, new_hold_id,
+                                     now_iso, now_ts)
+from app.repositories.events import EventRepository
+from app.repositories.users import UserRepository
+from app.stores import Stores
 
 
 class HoldRepository:
-    def __init__(self, db: Database):
-        self.db = db
-        self.r = db.client
+    def __init__(self, stores: Stores):
+        self.stores = stores
+        self.db = stores.redis
+        self.r = stores.redis.client
+        self.events = EventRepository(stores)
+        self.users = UserRepository(stores)
 
     def create(self, *, user_id: str, event_id: str, qty: int) -> dict:
-        if not self.r.exists(keys.user(user_id)):
+        if not self.users.exists(user_id):
             raise NotFoundError(f"Usuario {user_id} no existe")
-        if not self.r.exists(keys.event(event_id)):
-            raise NotFoundError(f"Evento {event_id} no existe")
-        self.reclaim_expired()  # liberar primero lo que ya venció
-        hold_id = next_id(self.db, "hold")
+        self.events.ensure_stock(event_id)        # valida el evento (PostgreSQL) y calienta Redis
+        self.reclaim_expired()                    # liberar primero lo que ya venció
+        hold_id = new_hold_id()
         member = keys.hold_member(hold_id, event_id, user_id, qty)
         ok, remaining = self.db.create_hold(
             keys=[keys.event_stock(event_id), keys.hold(hold_id),
@@ -58,15 +67,17 @@ class HoldRepository:
     def list_for_user(self, user_id: str) -> list[dict]:
         self.reclaim_expired()
         result = []
-        for hold_id in sorted(self.r.smembers(keys.user_holds(user_id)), key=int):
+        for hold_id in self.r.smembers(keys.user_holds(user_id)):
             try:
                 result.append(self.get(hold_id))
             except NotFoundError:
                 continue
-        return result
+        return sorted(result, key=lambda h: h["created_at"])
 
-    def cancel(self, hold_id: str) -> dict:
+    def cancel(self, hold_id: str, *, user_id: str | None = None) -> dict:
         data = self.get(hold_id)
+        if user_id is not None and data["user_id"] != user_id:
+            raise ForbiddenError("Esa reserva pertenece a otro usuario")
         member = keys.hold_member(hold_id, data["event_id"], data["user_id"], data["qty"])
         released = self.db.release_hold(
             keys=[keys.hold(hold_id), keys.holds_expiring(),

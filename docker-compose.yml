@@ -1,0 +1,58 @@
+# Entorno LOCAL de desarrollo y demostración: PostgreSQL 17 + Redis 7 con ACL.
+# Las contraseñas por defecto son solo para pruebas locales; cámbialas con variables de entorno.
+#
+#   docker compose up -d
+#   python scripts/init_db.py --admin-url postgresql://postgres:postgres@localhost:5432/ticketflash \
+#          --app-password ... --analyst-password ... --backup-password ...
+#
+# La conexión "remota" se demuestra apuntando DATABASE_URL / REDIS_URL a otra máquina
+# (o a Neon y Redis Cloud, que es el despliegue real del proyecto).
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ticketflash
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${PG_ADMIN_PASSWORD:-postgres}
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ticketflash"]
+      interval: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    # appendonly: persistencia AOF (cada segundo) para no perder datos si el contenedor se reinicia.
+    command: ["redis-server", "--requirepass", "${REDIS_ADMIN_PASSWORD:-redisadmin}", "--appendonly", "yes"]
+    ports: ["6379:6379"]
+    volumes: [redisdata:/data]
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_ADMIN_PASSWORD:-redisadmin}", "--no-auth-warning", "ping"]
+      interval: 5s
+      retries: 10
+
+  # Crea los usuarios ACL de redis/01_users_acl.redis (las ACL por comando viven en memoria:
+  # tras reiniciar solo "redis" ejecuta de nuevo:  docker compose run --rm redis-acl)
+  redis-acl:
+    image: redis:7-alpine
+    depends_on:
+      redis: {condition: service_healthy}
+    environment:
+      REDIS_APP_PASSWORD: ${REDIS_APP_PASSWORD:-redisapp}
+      REDIS_RO_PASSWORD: ${REDIS_RO_PASSWORD:-redisro}
+      REDIS_BACKUP_PASSWORD: ${REDIS_BACKUP_PASSWORD:-redisbackup}
+    volumes: ["./redis:/acl:ro"]
+    entrypoint: ["sh", "-c"]
+    command:
+      - >
+        sed -e "s/CAMBIA_ESTA_CLAVE_REDIS_APP/$${REDIS_APP_PASSWORD:-redisapp}/"
+        -e "s/CAMBIA_ESTA_CLAVE_REDIS_RO/$${REDIS_RO_PASSWORD:-redisro}/"
+        -e "s/CAMBIA_ESTA_CLAVE_REDIS_BACKUP/$${REDIS_BACKUP_PASSWORD:-redisbackup}/"
+        /acl/01_users_acl.redis |
+        redis-cli -h redis -a ${REDIS_ADMIN_PASSWORD:-redisadmin} --no-auth-warning
+    restart: "no"
+
+volumes:
+  pgdata:
+  redisdata:

@@ -1,5 +1,5 @@
 # Blueprint de Render: despliega la aplicación web como servicio gratuito.
-# La URL de Redis Cloud se introduce como secreto en el panel (sync: false).
+# Las URL de Redis Cloud y de PostgreSQL (Neon) se introducen como secretos en el panel (sync: false).
 services:
   - type: web
     name: ticketflash
@@ -12,6 +12,8 @@ services:
       - key: PYTHON_VERSION
         value: 3.12.7
       - key: REDIS_URL
+        sync: false
+      - key: DATABASE_URL
         sync: false
       - key: KEY_PREFIX
         value: tf

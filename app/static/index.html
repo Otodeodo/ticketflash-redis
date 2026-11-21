@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>TicketFlash · Entradas al instante</title>
-<meta name="description" content="Venta de entradas con reservas temporales sobre Redis Cloud.">
+<meta name="description" content="Venta de entradas con PostgreSQL (relacional) y Redis (no relacional).">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Anton&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -24,9 +24,13 @@
     </label>
 
     <div class="nav-right">
-      <span class="live" id="conn" title="Estado de la conexión con Redis Cloud"><i></i><b>Conectando</b></span>
-      <button class="icon-btn" id="admin-btn" title="Crear evento" aria-label="Crear evento">
+      <span class="live" id="conn-pg" title="Estado de la conexión con PostgreSQL"><i></i><b>PostgreSQL</b></span>
+      <span class="live" id="conn" title="Estado de la conexión con Redis"><i></i><b>Conectando</b></span>
+      <button class="icon-btn hidden" id="admin-btn" title="Crear evento (admin)" aria-label="Crear evento">
         <svg viewBox="0 0 24 24"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg>
+      </button>
+      <button class="icon-btn hidden" id="panel-btn" title="Panel de administración" aria-label="Panel de administración">
+        <svg viewBox="0 0 24 24"><path d="M4 4h7v7H4V4Zm9 0h7v4h-7V4ZM4 13h7v7H4v-7Zm9-3h7v10h-7V10Z"/></svg>
       </button>
       <button class="icon-btn bag" id="bag-btn" title="Mis entradas" aria-label="Mis entradas">
         <svg viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v3a2 2 0 0 0 0 4v3a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-3a2 2 0 0 0 0-4V7Zm2 0v1.8a4 4 0 0 1 0 6.4V17h14v-1.8a4 4 0 0 1 0-6.4V7H5Zm4 2h2v2H9V9Zm0 4h2v2H9v-2Z"/></svg>
@@ -70,7 +74,7 @@
   <section class="block">
     <div class="block-head">
       <h2>Top ventas</h2>
-      <span class="hint">Ranking en tiempo real · Sorted Set</span>
+      <span class="hint">Ranking en tiempo real · Redis Sorted Set</span>
     </div>
     <div class="top-row" id="top-row"></div>
   </section>
@@ -88,8 +92,8 @@
   <!-- ========================== CÓMO FUNCIONA ========================== -->
   <section class="block how">
     <div class="how-card"><span class="n">01</span><h3>Reserva</h3><p>Un script Lua comprueba y descuenta el stock en una sola operación atómica. Nunca se vende más de lo que hay.</p></div>
-    <div class="how-card"><span class="n">02</span><h3>10 minutos</h3><p>La reserva es una clave con <code>EXPIRE 600</code>. Si no confirmas, Redis la elimina y el stock vuelve a la venta.</p></div>
-    <div class="how-card"><span class="n">03</span><h3>Confirma</h3><p>Tu orden se guarda sin caducidad, entra en el ranking (ZSET) y en tu historial (LIST).</p></div>
+    <div class="how-card"><span class="n">02</span><h3>10 minutos</h3><p>La reserva es una clave de Redis con <code>EXPIRE 600</code>. Si no confirmas, expira y el stock vuelve a la venta.</p></div>
+    <div class="how-card"><span class="n">03</span><h3>Confirma</h3><p>Tu orden se registra en PostgreSQL con una transacción ACID: o se guarda completa o no se guarda.</p></div>
   </section>
 </main>
 
@@ -97,11 +101,12 @@
   <div class="footer-inner">
     <div>
       <div class="wordmark sm">TICKET<span>FLASH</span></div>
-      <p>Proyecto de Bases de Datos NoSQL · Modelo clave-valor sobre Redis Cloud.</p>
+      <p>Proyecto final de Bases de Datos Avanzadas · PostgreSQL (relacional) + Redis (no relacional).</p>
     </div>
     <div class="footer-keys">
-      <p class="footer-title">Estructuras en Redis</p>
+      <p class="footer-title">Estructuras en Redis · filas en PostgreSQL</p>
       <div class="key-chips" id="key-chips"></div>
+      <div class="key-chips" id="pg-chips"></div>
       <p class="footer-meta" id="footer-meta"></p>
     </div>
     <div>
@@ -155,14 +160,36 @@
   <div class="modal modal-sm">
     <button class="close" data-close aria-label="Cerrar">×</button>
     <h2 class="modal-title">Entra en TicketFlash</h2>
-    <p class="muted">Elige tu perfil. Crearemos una sesión en Redis que caduca tras 30 minutos sin actividad.</p>
-    <div class="user-list" id="user-list"></div>
-    <form id="user-form" class="stack">
-      <p class="divider"><span>o crea un perfil nuevo</span></p>
-      <input id="us-name" placeholder="Nombre" required maxlength="80">
-      <input id="us-email" type="email" placeholder="email@ejemplo.com" required>
-      <button class="btn btn-ink" type="submit">Crear perfil y entrar</button>
+    <p class="muted">Tu cuenta vive en PostgreSQL (contraseña con hash scrypt). La sesión se guarda en Redis y caduca tras 30 minutos sin actividad.</p>
+    <form id="login-form" class="stack">
+      <input id="lg-email" type="email" placeholder="email@ejemplo.com" required autocomplete="username">
+      <input id="lg-password" type="password" placeholder="Contraseña" required autocomplete="current-password">
+      <button class="btn btn-ink" type="submit">Entrar</button>
     </form>
+    <form id="user-form" class="stack">
+      <p class="divider"><span>o crea una cuenta nueva</span></p>
+      <input id="us-name" placeholder="Nombre" required maxlength="80">
+      <input id="us-email" type="email" placeholder="email@ejemplo.com" required autocomplete="username">
+      <input id="us-password" type="password" placeholder="Contraseña (mínimo 8 caracteres)" required minlength="8" autocomplete="new-password">
+      <button class="btn btn-line" type="submit">Crear cuenta y entrar</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===================== MODAL: PANEL DE ADMINISTRACIÓN ===================== -->
+<div class="overlay hidden" id="panel-modal" role="dialog" aria-modal="true">
+  <div class="modal modal-wide">
+    <button class="close" data-close aria-label="Cerrar">×</button>
+    <h2 class="modal-title">Panel de administración</h2>
+    <p class="muted">Consultas y operaciones sobre las dos bases de datos. Solo visible para el rol <code>admin</code>.</p>
+    <div class="tabs" id="panel-tabs">
+      <button class="tab active" data-tab="sales">Ventas <small>PostgreSQL</small></button>
+      <button class="tab" data-tab="orders">Órdenes <small>PostgreSQL</small></button>
+      <button class="tab" data-tab="users">Usuarios <small>PostgreSQL</small></button>
+      <button class="tab" data-tab="audit">Auditoría <small>PostgreSQL</small></button>
+      <button class="tab" data-tab="sync">Consistencia <small>PG ↔ Redis</small></button>
+    </div>
+    <div class="panel-body" id="panel-body"></div>
   </div>
 </div>
 

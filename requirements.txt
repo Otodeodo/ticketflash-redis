@@ -1,5 +1,6 @@
 # Dependencias de ejecución (las que instala el servidor de producción)
 redis>=5.0
+psycopg[binary,pool]>=3.2
 fastapi>=0.110
 uvicorn[standard]>=0.27
 python-dotenv>=1.0

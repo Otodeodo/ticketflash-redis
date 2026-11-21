@@ -1,6 +1,10 @@
-# Dependencias de desarrollo: pruebas y generación del PDF
+# Dependencias de desarrollo: pruebas, respaldos opcionales y generación del PDF
 -r requirements.txt
 pytest>=8.0
 httpx>=0.27
 fakeredis[lua]>=2.20
 markdown>=3.5
+# Servidor PostgreSQL embebido para las pruebas (Python <= 3.13); alternativa: TEST_ADMIN_DATABASE_URL
+pgserver>=0.1.4; python_version < "3.14"
+# Respaldo remoto a almacenamiento compatible con S3 (opcional)
+boto3>=1.34

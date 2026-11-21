@@ -1,4 +1,4 @@
-"""Conexión a Redis y scripts Lua atómicos.
+"""Conexión a Redis (base NO relacional) y scripts Lua atómicos.
 
 Un único cliente `redis.Redis` (con pool de conexiones interno) es compartido
 por toda la aplicación. Los scripts Lua se registran una vez y Redis los
@@ -53,30 +53,19 @@ redis.call('SREM', KEYS[4], ARGV[2])
 return 1
 """
 
-#: Convierte una reserva vigente en una orden confirmada.
-#: KEYS: 1=hold, 2=holds_expiring, 3=user_holds, 4=order, 5=orders_index,
-#:       6=user_orders, 7=ranking_sales, 8=activity
-#: ARGV: 1=member, 2=hold_id, 3=order_id, 4=unit_price, 5=created_at,
-#:       6=activity_entry, 7=activity_max
-#: Devuelve {ok, event_id, qty, total}
-LUA_CONFIRM_HOLD = """
-if redis.call('EXISTS', KEYS[1]) == 0 then return {0} end
-if redis.call('ZREM', KEYS[2], ARGV[1]) == 0 then return {0} end
-local h = redis.call('HMGET', KEYS[1], 'user_id', 'event_id', 'qty')
-local user_id, event_id, qty = h[1], h[2], tonumber(h[3])
-local total = qty * tonumber(ARGV[4])
+#: "Reclama" una reserva vigente para convertirla en orden: la elimina de forma
+#: atómica. Solo UN cliente puede reclamarla (ZREM como cerrojo), por lo que dos
+#: confirmaciones simultáneas de la misma reserva nunca generan dos órdenes.
+#: El resto de la compra (la orden) se registra en PostgreSQL.
+#: KEYS: 1=hold, 2=holds_expiring, 3=user_holds
+#: ARGV: 1=member, 2=hold_id
+#: Devuelve 1 si la reclamó, 0 si ya no existía (expirada, cancelada o ya reclamada).
+LUA_CLAIM_HOLD = """
+if redis.call('EXISTS', KEYS[1]) == 0 then return 0 end
+if redis.call('ZREM', KEYS[2], ARGV[1]) == 0 then return 0 end
 redis.call('DEL', KEYS[1])
 redis.call('SREM', KEYS[3], ARGV[2])
-redis.call('HSET', KEYS[4],
-    'id', ARGV[3], 'user_id', user_id, 'event_id', event_id, 'qty', tostring(qty),
-    'unit_price', ARGV[4], 'total', tostring(total), 'created_at', ARGV[5],
-    'status', 'CONFIRMED')
-redis.call('SADD', KEYS[5], ARGV[3])
-redis.call('LPUSH', KEYS[6], ARGV[3])
-redis.call('ZINCRBY', KEYS[7], qty, event_id)
-redis.call('LPUSH', KEYS[8], ARGV[6])
-redis.call('LTRIM', KEYS[8], 0, tonumber(ARGV[7]) - 1)
-return {1, event_id, qty, tostring(total)}
+return 1
 """
 
 
@@ -87,7 +76,7 @@ class Database:
         self.client = client
         self.create_hold = client.register_script(LUA_CREATE_HOLD)
         self.release_hold = client.register_script(LUA_RELEASE_HOLD)
-        self.confirm_hold = client.register_script(LUA_CONFIRM_HOLD)
+        self.claim_hold = client.register_script(LUA_CLAIM_HOLD)
 
     def ping(self) -> bool:
         return bool(self.client.ping())

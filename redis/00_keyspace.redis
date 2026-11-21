@@ -1,0 +1,57 @@
+# =============================================================================
+# TicketFlash · Creación del espacio de claves (base NO relacional: Redis)
+# 00_keyspace.redis  -  Una "base" Redis no se crea con DDL: se define por su modelo de
+# claves. Este script crea UN ejemplo de cada estructura del modelo (con el evento de
+# prueba "demo") para mostrarlas y comprobar los permisos. La aplicación y
+# scripts/seed.py crean los datos reales con exactamente estos comandos.
+#
+# Ejecutar (con el usuario tf_app o administrador):
+#     redis-cli -u "redis://tf_app:<PWD>@<host>:<port>" < redis/00_keyspace.redis
+# Al final se limpian las claves de ejemplo (DEL), por lo que es repetible.
+# Modelo completo y justificación: app/keys.py y sección 4.3 del PDF.
+# =============================================================================
+
+# --- STRING: stock en caliente (contador atómico; DECRBY/INCRBY) -------------
+SET tf:event:demo:stock 100
+DECRBY tf:event:demo:stock 2
+GET tf:event:demo:stock
+
+# --- HASH + EXPIRE: reserva temporal (10 minutos) ------------------------------
+HSET tf:hold:demo1 id demo1 user_id 1 event_id demo qty 2 created_at 2026-11-21T10:00:00+00:00
+EXPIRE tf:hold:demo1 600
+TTL tf:hold:demo1
+
+# --- ZSET: cola de expiración (score = instante Unix de vencimiento) ----------
+ZADD tf:holds:expiring 1893456000 demo1:demo:1:2
+ZRANGEBYSCORE tf:holds:expiring -inf +inf
+
+# --- SET: reservas activas de un usuario --------------------------------------
+SADD tf:user:1:holds demo1
+SMEMBERS tf:user:1:holds
+
+# --- HASH + EXPIRE deslizante: sesión (30 min, se renueva en cada acceso) -----
+HSET tf:session:token-demo user_id 1 role customer
+EXPIRE tf:session:token-demo 1800
+
+# --- ZSET: ranking de ventas ----------------------------------------------------
+ZINCRBY tf:ranking:sales 2 demo
+ZREVRANGE tf:ranking:sales 0 4 WITHSCORES
+
+# --- LIST: feed de actividad reciente (se recorta a 100) -------------------------
+LPUSH tf:activity "{\"type\":\"ORDER\",\"event\":\"demo\",\"qty\":2}"
+LTRIM tf:activity 0 99
+LRANGE tf:activity 0 4
+
+# --- HyperLogLog: visitantes únicos (~12 KB por evento) ----------------------------
+PFADD tf:event:demo:visitors visitante-a visitante-b visitante-a
+PFCOUNT tf:event:demo:visitors
+
+# --- STRING con TTL corto: caché cache-aside y contador anti fuerza bruta -----------
+SET tf:cache:event:demo:summary "{\"id\":\"demo\",\"stock\":98}" EX 60
+INCR tf:ratelimit:login:demo@example.com
+EXPIRE tf:ratelimit:login:demo@example.com 300
+
+# --- Limpieza de los ejemplos ------------------------------------------------------------
+DEL tf:event:demo:stock tf:hold:demo1 tf:user:1:holds tf:session:token-demo tf:event:demo:visitors tf:cache:event:demo:summary tf:ratelimit:login:demo@example.com
+ZREM tf:holds:expiring demo1:demo:1:2
+ZREM tf:ranking:sales demo
