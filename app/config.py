@@ -77,7 +77,7 @@ class Settings:
 def load_settings() -> Settings:
     """Construye `Settings` a partir del entorno."""
     return Settings(
-        redis_url=os.getenv("REDIS_URL") or None,
+        redis_url=(os.getenv("REDIS_URL") or "").strip() or None,
         redis_host=os.getenv("REDIS_HOST", "localhost"),
         redis_port=_int_env("REDIS_PORT", 6379),
         redis_username=os.getenv("REDIS_USERNAME", "default"),
@@ -88,7 +88,7 @@ def load_settings() -> Settings:
         hold_ttl=_int_env("HOLD_TTL_SECONDS", 600),
         cache_ttl=_int_env("CACHE_TTL_SECONDS", 60),
         activity_max=_int_env("ACTIVITY_MAX", 100),
-        database_url=os.getenv("DATABASE_URL") or None,
+        database_url=(os.getenv("DATABASE_URL") or "").strip() or None,   # strip: al pegar secretos suele colarse un salto de línea
         pg_pool_min=_int_env("PG_POOL_MIN", 1),
         pg_pool_max=_int_env("PG_POOL_MAX", 10),
         pg_connect_timeout=_int_env("PG_CONNECT_TIMEOUT", 10),
