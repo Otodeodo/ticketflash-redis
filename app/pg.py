@@ -103,6 +103,8 @@ def make_postgres(url: str | None = None, *, min_size: int | None = None,
         kwargs={"row_factory": dict_row, "prepare_threshold": None,
                 "connect_timeout": settings.pg_connect_timeout},
         configure=_configure,
+        check=ConnectionPool.check_connection,   # descarta conexiones muertas (p. ej. Neon suspendido)
+        max_idle=300,
         open=False,
     )
     pool.open(wait=True, timeout=settings.pg_connect_timeout + 5)
